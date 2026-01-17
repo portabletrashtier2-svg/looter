@@ -45,18 +45,18 @@ function parseLotteryResults(text) {
     }
 
     // Extract numbers (Looking for 2-digit patterns that appear prominently)
-    // We use lookarounds to avoid consuming the separator (whitespace/newline)
-    // and missing adjacent numbers (e.g., "99\n59\n16")
-    const numberRegex = /(?<!\d)(\d{2})(?!\d)/g;
+    // We only want "isolated" numbers (surrounded by spaces or line breaks)
+    // to avoid picking up digits from dates (17-1-2025) or phones (6508-7001)
+    const numberRegex = /(?:^|\s)(\d{2})(?=\s|$)/g;
     let match;
     const foundNumbers = [];
     while ((match = numberRegex.exec(text)) !== null) {
         foundNumbers.push(match[1]);
     }
 
-    // Heuristic: Usually lottery results are the first 1-3 prominent 2-digit numbers
-    // In the Instagram layout, they are often on separate lines or clearly spaced
-    numbers = foundNumbers.slice(0, 3);
+    // Heuristic: For this specific Instagram layout, the lottery results 
+    // are ALWAYS the last 3 prominent 2-digit numbers at the bottom.
+    numbers = foundNumbers.slice(-3);
 
     return {
         game,
