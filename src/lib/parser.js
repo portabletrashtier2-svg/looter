@@ -41,7 +41,23 @@ function parseLotteryResults(text) {
     const dateRegex = /(\d{1,2})[-/](\d{1,2})[-/](\d{4})/;
     const dateMatch = text.match(dateRegex);
     if (dateMatch) {
-        date = `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
+        let day = dateMatch[1].padStart(2, '0');
+        let month = dateMatch[2].padStart(2, '0');
+        let year = dateMatch[3];
+
+        // Smart Correction: Handle "Happy New Year" typos
+        // If it's currently 2026 and the card says 2025 during January/February, 
+        // it's 99% a typo on the Instagram card.
+        const currentYear = new Date().getFullYear();
+        if (currentYear === 2026 && year === '2025') {
+            const currentMonth = new Date().getMonth(); // 0 = Jan
+            if (currentMonth <= 1) { // Jan or Feb
+                console.log(`🪄 Auto-correcting year from ${year} to ${currentYear} (New Year typo detected)`);
+                year = currentYear.toString();
+            }
+        }
+
+        date = `${year}-${month}-${day}`;
     }
 
     // Extract numbers (Looking for 2-digit patterns that appear prominently)
