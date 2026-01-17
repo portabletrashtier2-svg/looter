@@ -12,11 +12,25 @@ async function scrapeInstagram() {
     const cookieJson = process.env.INSTAGRAM_COOKIES;
     if (cookieJson) {
         try {
-            const cookies = JSON.parse(cookieJson);
+            let cookies = JSON.parse(cookieJson);
+
+            // Playwright is strict about sameSite values.
+            // Normalize "no_restriction" or "unspecified" to "None" or "Lax"
+            cookies = cookies.map(c => {
+                const normalized = { ...c };
+                if (c.sameSite === 'no_restriction') normalized.sameSite = 'None';
+                if (c.sameSite === 'unspecified') normalized.sameSite = 'Lax';
+                // Ensure sameSite is one of: Strict, Lax, None
+                if (!['Strict', 'Lax', 'None'].includes(normalized.sameSite)) {
+                    normalized.sameSite = 'Lax';
+                }
+                return normalized;
+            });
+
             await context.addCookies(cookies);
-            console.log('🍪 Session cookies injected successfully.');
+            console.log('🍪 Session cookies injected and sanitized successfully.');
         } catch (e) {
-            console.error('❌ Failed to parse INSTAGRAM_COOKIES secret:', e.message);
+            console.error('❌ Failed to parse or inject INSTAGRAM_COOKIES:', e.message);
         }
     }
 
