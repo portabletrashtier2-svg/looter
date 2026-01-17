@@ -37,8 +37,9 @@ function parseLotteryResults(text) {
     }
 
     // Extract numbers (Looking for 2-digit patterns that appear prominently)
-    // We look for 2-digit numbers that are either isolated by spaces or at the end of lines
-    const numberRegex = /(?:^|\s)(\d{2})(?:\s|$)/g;
+    // We use lookarounds to avoid consuming the separator (whitespace/newline)
+    // and missing adjacent numbers (e.g., "99\n59\n16")
+    const numberRegex = /(?<!\d)(\d{2})(?!\d)/g;
     let match;
     const foundNumbers = [];
     while ((match = numberRegex.exec(text)) !== null) {
