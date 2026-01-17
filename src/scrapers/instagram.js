@@ -38,29 +38,49 @@ async function scrapeInstagram() {
 
     try {
         const url = 'https://www.instagram.com/chiriqui_tica.nacional';
-        await page.goto(url);
+        console.log(`🌐 Navigating to: ${url}`);
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // Check if we are being redirected to login
-        if (page.url().includes('login')) {
-            console.warn('⚠️ Redirected to login. Cookies might be expired or invalid.');
+        // Check for "Save Login Info" or "Not Now" buttons
+        try {
+            const notNow = await page.getByRole('button', { name: /not now|ahora no/i });
+            if (await notNow.isVisible()) {
+                console.log('🔘 Clicking "Not Now" on login prompt...');
+                await notNow.click();
+            }
+        } catch (e) {
+            // Ignored if button doesn't exist
         }
 
-        // Wait for the grid of posts to appear
+        // Check if we are still on login
+        if (page.url().includes('login')) {
+            console.warn('⚠️ Still on login page. Session could be invalid or restricted.');
+            await page.screenshot({ path: 'login_error.png' });
+        }
+
+        // Wait for the grid of posts to appear - use a more flexible selector
         console.log('⏳ Waiting for post grid to load...');
-        await page.waitForSelector('article a[href*="/p/"]', { timeout: 15000 });
+        try {
+            await page.waitForSelector('a[href*="/p/"]', { timeout: 30000 });
+        } catch (e) {
+            console.error('❌ Timeout waiting for posts. Capturing screenshot for debug...');
+            await page.screenshot({ path: 'timeout_debug.png' });
+            throw e;
+        }
 
         console.log('📸 Scraping results from:', url);
 
-        // Get all post links with a more precise selector
+        // Get all post links - try a few common selectors
         const posts = await page.evaluate(() => {
-            const anchors = Array.from(document.querySelectorAll('article a[href*="/p/"]'));
+            // Try different selectors that Instagram uses
+            const anchors = Array.from(document.querySelectorAll('a[href*="/p/"]'));
             return anchors.map(a => {
                 const img = a.querySelector('img') || a.parentElement.querySelector('img');
                 return {
                     url: a.href,
                     img: img?.src
                 };
-            }).filter(p => p.img);
+            }).filter(p => p.img && p.url.includes('/p/'));
         });
 
         console.log(`Found ${posts.length} posts. Checking for new results...`);

@@ -31,3 +31,11 @@ jobs:
           OCR_SPACE_KEY: ${{ secrets.OCR_SPACE_KEY }}
           INSTAGRAM_COOKIES: ${{ secrets.INSTAGRAM_COOKIES }}
         run: npm start
+      
+      - name: Upload Screenshots (Debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: ./*.png
+          if-no-files-found: ignore
