@@ -5,140 +5,104 @@ const { parseLotteryResults } = require('../lib/parser');
 
 async function scrapeInstagram() {
     console.log('🚀 Starting Instagram Scraper...');
+
+    // Add more profiles here if needed
+    const TARGET_PROFILES = [
+        'https://www.instagram.com/chiriqui_tica.nacional'
+    ];
+
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
 
-    // Inject cookies if available (Bypass Login Wall)
+    // Inject cookies once for the context
     const cookieJson = process.env.INSTAGRAM_COOKIES;
     if (cookieJson) {
         try {
             let cookies = JSON.parse(cookieJson);
-
-            // Playwright is strict about sameSite values.
-            // Normalize "no_restriction" or "unspecified" to "None" or "Lax"
             cookies = cookies.map(c => {
                 const normalized = { ...c };
                 if (c.sameSite === 'no_restriction') normalized.sameSite = 'None';
                 if (c.sameSite === 'unspecified') normalized.sameSite = 'Lax';
-                // Ensure sameSite is one of: Strict, Lax, None
-                if (!['Strict', 'Lax', 'None'].includes(normalized.sameSite)) {
-                    normalized.sameSite = 'Lax';
-                }
+                if (!['Strict', 'Lax', 'None'].includes(normalized.sameSite)) normalized.sameSite = 'Lax';
                 return normalized;
             });
-
             await context.addCookies(cookies);
-            console.log('🍪 Session cookies injected and sanitized successfully.');
+            console.log('🍪 Session cookies injected successfully.');
         } catch (e) {
-            console.error('❌ Failed to parse or inject INSTAGRAM_COOKIES:', e.message);
+            console.error('❌ Failed to inject cookies:', e.message);
         }
     }
 
-    const page = await context.newPage();
+    for (const url of TARGET_PROFILES) {
+        console.log(`\n📂 Processing Profile: ${url}`);
+        const page = await context.newPage();
 
-    try {
-        const url = 'https://www.instagram.com/chiriqui_tica.nacional';
-        console.log(`🌐 Navigating to: ${url}`);
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-        // Check for "Save Login Info" or "Not Now" buttons
         try {
-            const notNow = await page.getByRole('button', { name: /not now|ahora no/i });
-            if (await notNow.isVisible()) {
-                console.log('🔘 Clicking "Not Now" on login prompt...');
-                await notNow.click();
-            }
-        } catch (e) {
-            // Ignored if button doesn't exist
-        }
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // Check if we are still on login
-        if (page.url().includes('login')) {
-            console.warn('⚠️ Still on login page. Session could be invalid or restricted.');
-            await page.screenshot({ path: 'login_error.png' });
-        }
-
-        // Wait for the grid of posts to appear - use a more flexible selector
-        console.log('⏳ Waiting for post grid to load...');
-        try {
-            await page.waitForSelector('a[href*="/p/"]', { timeout: 30000 });
-        } catch (e) {
-            console.error('❌ Timeout waiting for posts. Capturing screenshot for debug...');
-            await page.screenshot({ path: 'timeout_debug.png' });
-            throw e;
-        }
-
-        console.log('📸 Scraping results from:', url);
-
-        // Get all post links - try a few common selectors
-        const posts = await page.evaluate(() => {
-            // Try different selectors that Instagram uses
-            const anchors = Array.from(document.querySelectorAll('a[href*="/p/"]'));
-            return anchors.map(a => {
-                const img = a.querySelector('img') || a.parentElement.querySelector('img');
-                return {
-                    url: a.href,
-                    img: img?.src
-                };
-            }).filter(p => p.img && p.url.includes('/p/'));
-        });
-
-        console.log(`Found ${posts.length} posts. Checking for new results...`);
-
-        for (const post of posts.slice(0, 3)) {
-            const postID = post.url.split('/p/')[1].replace('/', '');
-
-            const { data: existing } = await supabase
-                .from('lottery_results')
-                .select('*')
-                .eq('external_id', postID)
-                .single();
-
-            if (existing) {
-                console.log(`⏭️ Post ${postID} already processed. Skipping.`);
-                continue;
-            }
-
-            console.log(`✨ New post found! Processing: ${post.url}`);
-
+            // Popup bypass
             try {
-                const rawText = await performOCR(post.img);
-                const results = parseLotteryResults(rawText);
+                const notNow = await page.getByRole('button', { name: /not now|ahora no/i });
+                if (await notNow.isVisible()) await notNow.click();
+            } catch (e) { }
 
-                if (results.game && results.date && results.numbers.length > 0) {
-                    console.log(`✅ Parsed: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
+            await page.waitForSelector('a[href*="/p/"]', { timeout: 30000 });
 
-                    const { error } = await supabase
-                        .from('lottery_results')
-                        .insert([{
-                            country: results.game, // Using 'country' column for game type
-                            draw_date: results.date,
-                            data: {
-                                time: results.rawTime || 'Manual',
-                                numbers: results.numbers
-                            },
-                            external_id: postID,
-                            raw_ocr: rawText
-                        }]);
+            const posts = await page.evaluate(() => {
+                const anchors = Array.from(document.querySelectorAll('a[href*="/p/"]'));
+                return anchors.map(a => {
+                    const img = a.querySelector('img') || a.parentElement.querySelector('img');
+                    return { url: a.href, img: img?.src };
+                }).filter(p => p.img && p.url.includes('/p/'));
+            });
 
-                    if (error) {
-                        console.error('❌ Supabase insert error:', error.message);
-                    } else {
-                        console.log('💾 Result saved to Master Supabase.');
+            console.log(`📸 Found ${posts.length} posts. Scanning top 12 for new results...`);
+
+            for (const post of posts.slice(0, 12)) {
+                const postID = post.url.split('/p/')[1].replace('/', '');
+
+                const { data: existing } = await supabase
+                    .from('lottery_results')
+                    .select('id')
+                    .eq('external_id', postID)
+                    .single();
+
+                if (existing) continue;
+
+                console.log(`✨ New result found: ${post.url}`);
+
+                try {
+                    const rawText = await performOCR(post.img);
+                    const results = parseLotteryResults(rawText);
+
+                    if (results.game && results.date && results.numbers.length > 0) {
+                        const { error } = await supabase
+                            .from('lottery_results')
+                            .insert([{
+                                country: results.game,
+                                draw_date: results.date,
+                                data: { time: 'Manual', numbers: results.numbers },
+                                external_id: postID,
+                                raw_ocr: rawText
+                            }]);
+
+                        if (error) console.error('❌ Insert error:', error.message);
+                        else console.log(`✅ Saved: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
                     }
-                } else {
-                    console.warn('⚠️ Could not extract valid results from post.', results);
+                } catch (innerError) {
+                    console.error(`❌ Error parsing post ${postID}:`, innerError.message);
                 }
-            } catch (innerError) {
-                console.error(`❌ Error processing post ${postID}:`, innerError.message);
             }
+        } catch (error) {
+            console.error(`❌ Error scraping ${url}:`, error.message);
+            await page.screenshot({ path: `error_${Date.now()}.png` });
+        } finally {
+            await page.close();
         }
-
-    } catch (error) {
-        console.error('❌ Error during Instagram scrape:', error);
-    } finally {
-        await browser.close();
     }
+
+    await browser.close();
+    console.log('\n🏁 Scraper process finished.');
 }
 
 module.exports = { scrapeInstagram };
