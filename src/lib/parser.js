@@ -46,18 +46,17 @@ function parseLotteryResults(text) {
 
     // Extract numbers (Looking for 2-digit patterns that appear prominently)
     // 1. Clean the text to remove dates and phone numbers that often contain 2-digit pairs
-    let cleanText = text
-        .replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' ') // Remove dates: 17-1-2025
-        .replace(/\d{4}[-\s]\d{4}/g, ' ');               // Remove phone numbers: 6508-7001
+    // We use a more robust regex that handles optional spaces
+    const cleanText = text
+        .replace(/\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/g, ' ') // dates: 17-1-2025
+        .replace(/\d{4}\s*[-\s]\s*\d{4}/g, ' ');                     // phones: 6508-7001
 
-    // 2. We use lookarounds to avoid consuming the separator (whitespace/newline)
-    // and missing adjacent numbers (e.g., "99\n59\n16")
-    const numberRegex = /(?<!\d)(\d{2})(?!\d)/g;
-    let match;
-    const foundNumbers = [];
-    while ((match = numberRegex.exec(cleanText)) !== null) {
-        foundNumbers.push(match[1]);
-    }
+    // 2. Extract all digit sequences and filter for exactly 2 digits
+    // This is safer than complex regex with lookarounds
+    const allMatches = cleanText.match(/\d+/g) || [];
+    const foundNumbers = allMatches.filter(n => n.length === 2);
+
+    console.log('🔢 Found 2-digit sequences:', foundNumbers);
 
     // Heuristic: For this specific Instagram layout, the lottery results 
     // are ALWAYS the last 3 prominent 2-digit numbers at the bottom.
