@@ -11,16 +11,17 @@ function parseLotteryResults(text) {
     let numbers = [];
 
     // Game Mapping (Ordered by priority/specificity)
+    // Values match DRAW_NAME_MAPPING keys in the main app
     const GAME_MAP = {
-        'LA NICA': 'nica',
-        'LA TICA': 'tica',
-        'LA NEW YORK': 'ny',
-        'NEW YORK': 'ny',
-        'FLORIDA': 'fl',
-        'LA FLORIDA': 'fl',
-        'CHIRIQUI TICA': 'tica',
-        'HONDUREÑA': 'nica',
-        'DIARIA': 'tica' // Often Used for Tica
+        'LA NICA': 'Nicaragua',
+        'LA TICA': 'Costa Rica',
+        'LA NEW YORK': 'USA',
+        'NEW YORK': 'USA',
+        'FLORIDA': 'USA',
+        'LA FLORIDA': 'USA',
+        'CHIRIQUI TICA': 'Costa Rica',
+        'HONDUREÑA': 'Honduras',
+        'DIARIA': 'Costa Rica' // Often Used for Tica
     };
 
     // Try to find game
