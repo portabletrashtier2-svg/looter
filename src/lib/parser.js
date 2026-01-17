@@ -45,12 +45,17 @@ function parseLotteryResults(text) {
     }
 
     // Extract numbers (Looking for 2-digit patterns that appear prominently)
-    // We only want "isolated" numbers (surrounded by spaces or line breaks)
-    // to avoid picking up digits from dates (17-1-2025) or phones (6508-7001)
-    const numberRegex = /(?:^|\s)(\d{2})(?=\s|$)/g;
+    // 1. Clean the text to remove dates and phone numbers that often contain 2-digit pairs
+    let cleanText = text
+        .replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' ') // Remove dates: 17-1-2025
+        .replace(/\d{4}[-\s]\d{4}/g, ' ');               // Remove phone numbers: 6508-7001
+
+    // 2. We use lookarounds to avoid consuming the separator (whitespace/newline)
+    // and missing adjacent numbers (e.g., "99\n59\n16")
+    const numberRegex = /(?<!\d)(\d{2})(?!\d)/g;
     let match;
     const foundNumbers = [];
-    while ((match = numberRegex.exec(text)) !== null) {
+    while ((match = numberRegex.exec(cleanText)) !== null) {
         foundNumbers.push(match[1]);
     }
 
