@@ -89,7 +89,7 @@ async function scrapeInstagram() {
             const postID = post.url.split('/p/')[1].replace('/', '');
 
             const { data: existing } = await supabase
-                .from('results')
+                .from('lottery_results')
                 .select('*')
                 .eq('external_id', postID)
                 .single();
@@ -109,14 +109,16 @@ async function scrapeInstagram() {
                     console.log(`✅ Parsed: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
 
                     const { error } = await supabase
-                        .from('results')
+                        .from('lottery_results')
                         .insert([{
-                            game_id: results.game,
+                            country: results.game, // Using 'country' column for game type
                             draw_date: results.date,
-                            numbers: results.numbers,
+                            data: {
+                                time: results.rawTime || 'Manual',
+                                numbers: results.numbers
+                            },
                             external_id: postID,
-                            raw_ocr: rawText,
-                            source: 'instagram'
+                            raw_ocr: rawText
                         }]);
 
                     if (error) {

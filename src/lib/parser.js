@@ -37,11 +37,11 @@ function parseLotteryResults(text) {
     }
 
     // Extract numbers (Looking for 2-digit patterns that appear prominently)
-    // In our reference image, numbers were 04, 08, 04
-    const numberRegex = /\s(\d{2})\s/g;
+    // We look for 2-digit numbers that are either isolated by spaces or at the end of lines
+    const numberRegex = /(?:^|\s)(\d{2})(?:\s|$)/g;
     let match;
     const foundNumbers = [];
-    while ((match = numberRegex.exec(` ${text} `)) !== null) {
+    while ((match = numberRegex.exec(text)) !== null) {
         foundNumbers.push(match[1]);
     }
 
