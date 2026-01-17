@@ -10,22 +10,30 @@ function parseLotteryResults(text) {
     let date = null;
     let numbers = [];
 
-    // Game Mapping
+    // Game Mapping (Ordered by priority/specificity)
     const GAME_MAP = {
-        'LA TICA': 'tica',
-        'CHIRIQUI TICA': 'tica',
         'LA NICA': 'nica',
+        'LA TICA': 'tica',
         'LA NEW YORK': 'ny',
         'NEW YORK': 'ny',
         'FLORIDA': 'fl',
-        'LA FLORIDA': 'fl'
+        'LA FLORIDA': 'fl',
+        'CHIRIQUI TICA': 'tica',
+        'HONDUREÑA': 'nica',
+        'DIARIA': 'tica' // Often Used for Tica
     };
 
     // Try to find game
     for (const [key, value] of Object.entries(GAME_MAP)) {
         if (text.toUpperCase().includes(key)) {
+            // Special check: If we found a generic match like CHIRIQUI TICA, 
+            // but the text ALSO has something more specific like LA NICA, 
+            // priority should go to the more specific one.
+            // Our map order helps, but we can also check for actual core game names.
             game = value;
-            break;
+
+            // If it's a "Real" game name (not the profile name), we can stop
+            if (!key.includes('CHIRIQUI')) break;
         }
     }
 
