@@ -6,36 +6,54 @@ const { parseLotteryResults } = require('../lib/parser');
 async function scrapeInstagram() {
     console.log('🚀 Starting Instagram Scraper...');
     const browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const context = await browser.newContext();
+
+    // Inject cookies if available (Bypass Login Wall)
+    const cookieJson = process.env.INSTAGRAM_COOKIES;
+    if (cookieJson) {
+        try {
+            const cookies = JSON.parse(cookieJson);
+            await context.addCookies(cookies);
+            console.log('🍪 Session cookies injected successfully.');
+        } catch (e) {
+            console.error('❌ Failed to parse INSTAGRAM_COOKIES secret:', e.message);
+        }
+    }
+
+    const page = await context.newPage();
 
     try {
         const url = 'https://www.instagram.com/chiriqui_tica.nacional';
         await page.goto(url);
 
-        // Wait for images to load
-        await page.waitForTimeout(5000);
+        // Check if we are being redirected to login
+        if (page.url().includes('login')) {
+            console.warn('⚠️ Redirected to login. Cookies might be expired or invalid.');
+        }
+
+        // Wait for the grid of posts to appear
+        console.log('⏳ Waiting for post grid to load...');
+        await page.waitForSelector('article a[href*="/p/"]', { timeout: 15000 });
 
         console.log('📸 Scraping results from:', url);
 
-        // Get all post links
+        // Get all post links with a more precise selector
         const posts = await page.evaluate(() => {
-            const anchors = Array.from(document.querySelectorAll('a'));
-            return anchors
-                .filter(a => a.href.includes('/p/'))
-                .map(a => ({
+            const anchors = Array.from(document.querySelectorAll('article a[href*="/p/"]'));
+            return anchors.map(a => {
+                const img = a.querySelector('img') || a.parentElement.querySelector('img');
+                return {
                     url: a.href,
-                    img: a.querySelector('img')?.src
-                }))
-                .filter(p => p.img);
+                    img: img?.src
+                };
+            }).filter(p => p.img);
         });
 
         console.log(`Found ${posts.length} posts. Checking for new results...`);
 
-        // Process only the top 3 most recent posts to avoid heavy OCR usage
         for (const post of posts.slice(0, 3)) {
             const postID = post.url.split('/p/')[1].replace('/', '');
 
-            // Check if processed
             const { data: existing } = await supabase
                 .from('results')
                 .select('*')
@@ -50,14 +68,12 @@ async function scrapeInstagram() {
             console.log(`✨ New post found! Processing: ${post.url}`);
 
             try {
-                // Perform OCR on the thumbnail/image
                 const rawText = await performOCR(post.img);
                 const results = parseLotteryResults(rawText);
 
                 if (results.game && results.date && results.numbers.length > 0) {
                     console.log(`✅ Parsed: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
 
-                    // Save to Supabase
                     const { error } = await supabase
                         .from('results')
                         .insert([{
