@@ -12,6 +12,9 @@ function parseLotteryResults(text) {
 
     // 1. Game Identification
     const GAME_MAP = {
+        'LA PRIMERA': 'Dominican Republic',
+        'LAPRIMERA': 'Dominican Republic',
+        'PRIMERA': 'Dominican Republic',
         'LA NICA': 'Nicaragua',
         'LA TICA': 'Costa Rica',
         'LA NEW YORK': 'USA',
@@ -20,14 +23,15 @@ function parseLotteryResults(text) {
         'LA FLORIDA': 'USA',
         'CHIRIQUI TICA': 'Costa Rica',
         'HONDUREÑA': 'Honduras',
-        'LA PRIMERA': 'Dominican Republic',
         'DIARIA': 'Costa Rica' // Often Used for Tica
     };
 
+    // Priority Check: Find the most specific match first
     for (const [key, value] of Object.entries(GAME_MAP)) {
         if (text.toUpperCase().includes(key)) {
             game = value;
-            if (!key.includes('CHIRIQUI')) break;
+            // If we found a specific country match, we can stop unless it's a multi-country keyword
+            if (['Dominican Republic', 'Nicaragua', 'USA', 'Honduras'].includes(value)) break;
         }
     }
 
@@ -48,7 +52,8 @@ function parseLotteryResults(text) {
     }
 
     // 3. Time Extraction
-    const timeRegex = /(\d{1,2}:\d{2})\s*(AM|PM)?/i;
+    // Matches formats like "11:00 AM", "6:00 PM", "6 PM", "A LAS 12", etc.
+    const timeRegex = /(\d{1,2}(:\d{2})?)\s*(AM|PM)?/i;
     const timeMatch = text.match(timeRegex);
     let rawTime = null;
     if (timeMatch) {
