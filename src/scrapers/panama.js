@@ -3,7 +3,7 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const { DateTime } = require('luxon');
 const { supabase } = require('../lib/supabase');
 const { enableAdBlocker } = require('../utils/resource-blocker');
-const { setRandomUserAgent } = require('../utils/user-agent');
+const { getRandomUserAgent } = require('../utils/user-agent');
 
 // Add stealth plugin
 chromium.use(StealthPlugin());
@@ -50,11 +50,12 @@ async function scrapePanama(targetDate = null) {
         });
 
         try {
-            const context = await browser.newContext();
+            const context = await browser.newContext({
+                userAgent: getRandomUserAgent()
+            });
             const page = await context.newPage();
 
-            // Set random user agent and block ads to speed up
-            await setRandomUserAgent(page);
+            // Block ads to speed up
             await enableAdBlocker(page);
 
             // Simple Stealth and Anti-detection

@@ -1,7 +1,7 @@
 /**
- * Utility to set a realistic random user agent
+ * Utility to get a realistic random user agent string
  */
-async function setRandomUserAgent(page) {
+function getRandomUserAgent() {
     const userAgents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
@@ -10,8 +10,7 @@ async function setRandomUserAgent(page) {
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0'
     ];
 
-    const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
-    await page.setUserAgent(randomUA);
+    return userAgents[Math.floor(Math.random() * userAgents.length)];
 }
 
-module.exports = { setRandomUserAgent };
+module.exports = { getRandomUserAgent };
