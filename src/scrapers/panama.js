@@ -11,106 +11,112 @@ async function scrapePanama(targetDate = null) {
         ? DateTime.fromISO(targetDate, { zone: 'America/Panama' })
         : DateTime.now().setZone('America/Panama');
 
-    const dateStr = now.toISODate(); // YYYY-MM-DD
+    const dateStr = now.toISODate();
     const day = now.day;
     const month = now.month;
     const year = now.year;
 
-    console.log(`🔎 [Panama LNB] Checking results for: ${dateStr}`);
+    const MAX_RETRIES = 15;
+    const RETRY_DELAY_MS = 2 * 60 * 1000; // 2 minutes
 
-    // HUNT MODE: Check if we already have results for today to stop early
-    const { data: existing } = await supabase
-        .from('lottery_results')
-        .select('id')
-        .eq('country', 'Panama')
-        .eq('draw_date', dateStr)
-        .limit(1);
+    console.log(`🔎 [Panama LNB] Persistent Hunt starting for: ${dateStr}`);
 
-    if (existing && existing.length > 0) {
-        console.log(`✅ [Panama LNB] Results for ${dateStr} already exist. Stopping Hunt.`);
-        return;
-    }
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        console.log(`\n🏹 [Attempt ${attempt}/${MAX_RETRIES}] checking results...`);
 
-    console.log('🚀 [Panama LNB] Results missing. Starting scraper...');
+        // 1. Check if results already exist (HUNT MODE)
+        const { data: existing } = await supabase
+            .from('lottery_results')
+            .select('id')
+            .eq('country', 'Panama')
+            .eq('draw_date', dateStr)
+            .limit(1);
 
-    const browser = await chromium.launch({
-        headless: true,
-        args: ['--disable-blink-features=AutomationControlled']
-    });
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    try {
-        // Simple Stealth and Anti-detection
-        await page.addInitScript(() => {
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
-        });
-
-        console.log('🌐 [Panama LNB] Navigating to lnb.gob.pa...');
-        await page.goto('https://www.lnb.gob.pa/', {
-            waitUntil: 'domcontentloaded',
-            timeout: 60000
-        });
-
-        // Wait for content - LNB site is heavy
-        console.log('⏳ [Panama LNB] Waiting for content boxes...');
-        await page.waitForTimeout(10000);
-
-        const results = await page.evaluate(({ d, m, y }) => {
-            const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-                'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-            const targetMonth = monthNames[m - 1];
-
-            const containers = document.querySelectorAll('div.containerTablero');
-            for (const container of containers) {
-                const dateEl = container.querySelector('.date');
-                if (!dateEl) continue;
-
-                const dateText = dateEl.innerText.trim().toLowerCase();
-                // Check if date contains our day, month name and year
-                if (dateText.includes(d.toString()) && dateText.includes(targetMonth) && dateText.includes(y.toString())) {
-                    const prizes = [];
-                    const premioBlocks = container.querySelectorAll('.premio-number');
-                    premioBlocks.forEach(el => prizes.push(el.innerText.trim()));
-
-                    if (prizes.length >= 3) {
-                        return {
-                            time: '3:30 PM',
-                            numbers: prizes.slice(0, 3)
-                        };
-                    }
-                }
-            }
-            return null;
-        }, { d: day, m: month, y: year });
-
-        if (results) {
-            console.log(`✨ [Panama LNB] FOUND: ${results.numbers.join('-')}`);
-
-            const { error } = await supabase
-                .from('lottery_results')
-                .insert([{
-                    country: 'Panama',
-                    draw_date: dateStr,
-                    data: {
-                        time: results.time,
-                        numbers: results.numbers
-                    },
-                    external_id: `lnb-pa-${dateStr}`,
-                    raw_ocr: `LNB Panama Website Scrape - ${dateStr}` // Dummy raw text as it's DOM-based
-                }]);
-
-            if (error) console.error('❌ [Panama LNB] Supabase Error:', error.message);
-            else console.log('💾 [Panama LNB] Result saved to Master Supabase.');
-        } else {
-            console.log('⚠️ [Panama LNB] No results found on site yet.');
+        if (existing && existing.length > 0) {
+            console.log(`✅ [Panama LNB] Results for ${dateStr} already exist. Stopping Hunt.`);
+            return;
         }
 
-    } catch (error) {
-        console.error('❌ [Panama LNB] Scraper Error:', error.message);
-    } finally {
-        await browser.close();
+        const browser = await chromium.launch({
+            headless: true,
+            args: ['--disable-blink-features=AutomationControlled']
+        });
+
+        try {
+            const context = await browser.newContext();
+            const page = await context.newPage();
+
+            // Simple Stealth and Anti-detection
+            await page.addInitScript(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            });
+
+            console.log('🌐 [Panama LNB] Navigating to lnb.gob.pa...');
+            await page.goto('https://www.lnb.gob.pa/', {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000
+            });
+
+            console.log('⏳ [Panama LNB] Waiting for content boxes (15s)...');
+            await page.waitForTimeout(15000);
+
+            const result = await page.evaluate(({ d, m, y }) => {
+                const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+                const targetMonth = monthNames[m - 1];
+
+                const containers = document.querySelectorAll('div.containerTablero');
+                for (const container of containers) {
+                    const dateEl = container.querySelector('.date');
+                    if (!dateEl) continue;
+                    const dateText = dateEl.innerText.trim().toLowerCase();
+                    if (dateText.includes(d.toString()) && dateText.includes(targetMonth) && dateText.includes(y.toString())) {
+                        const prizes = [];
+                        const premioBlocks = container.querySelectorAll('.premio-number');
+                        premioBlocks.forEach(el => prizes.push(el.innerText.trim()));
+                        if (prizes.length >= 3) {
+                            return { time: '3:30 PM', numbers: prizes.slice(0, 3) };
+                        }
+                    }
+                }
+                return null;
+            }, { d: day, m: month, y: year });
+
+            if (result) {
+                console.log(`✨ [Panama LNB] FOUND: ${result.numbers.join('-')}`);
+                const { error } = await supabase
+                    .from('lottery_results')
+                    .insert([{
+                        country: 'Panama',
+                        draw_date: dateStr,
+                        data: { time: result.time, numbers: result.numbers },
+                        external_id: `lnb-pa-${dateStr}`,
+                        raw_ocr: `LNB Panama Website Scrape - ${dateStr} (Attempt ${attempt})`
+                    }]);
+
+                if (error) console.error('❌ [Panama LNB] Supabase Error:', error.message);
+                else {
+                    console.log('💾 [Panama LNB] Result saved to Master Supabase.');
+                    await browser.close();
+                    return; // Successfully found and saved, end scavenger run
+                }
+            } else {
+                console.log(`⚠️ [Panama LNB] Results not published yet.`);
+            }
+
+        } catch (error) {
+            console.error(`❌ [Panama LNB] Scraper Error (Attempt ${attempt}):`, error.message);
+        } finally {
+            await browser.close();
+        }
+
+        if (attempt < MAX_RETRIES) {
+            console.log(`😴 [Panama LNB] Waiting ${RETRY_DELAY_MS / 1000} seconds for next try...`);
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        }
     }
+
+    console.log(`🛑 [Panama LNB] Reached max retries. Ending hunt for this run.`);
 }
 
 module.exports = { scrapePanama };

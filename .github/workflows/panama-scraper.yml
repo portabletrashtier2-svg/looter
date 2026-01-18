@@ -3,9 +3,10 @@ name: 🇵🇦 Panama LNB Scraper
 on:
   schedule:
     # 20:30 UTC is 15:30 (3:30 PM) in Panama (UTC-5)
-    # Every 5 minutes from 20:30 to 22:55 UTC (3:30 PM to 5:55 PM Panama)
+    # Every 30 minutes from 20:30 to 22:30 UTC (3:30 PM to 5:30 PM Panama)
+    # The script internally retries for 30 minutes every 2 minutes.
     # 0 = Sunday, 3 = Wednesday
-    - cron: '*/5 20-22 * * 0,3'
+    - cron: '0,30 20-22 * * 0,3'
   workflow_dispatch: # Allows manual trigger
 
 jobs:
