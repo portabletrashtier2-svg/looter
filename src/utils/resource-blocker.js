@@ -19,14 +19,9 @@ async function enableAdBlocker(page) {
             'fonts.gstatic.com'
         ];
 
-        const blockedTypes = ['image', 'media', 'font', 'stylesheet'];
+        const blockedTypes = ['image', 'media'];
 
         if (blockedResources.some(domain => url.includes(domain)) || blockedTypes.includes(resourceType)) {
-            // Note: We might need stylesheets for some sites, but LNB is likely fine without them for selector extraction
-            // Let's keep stylesheets for now to be safe, but block images/media/fonts
-            if (resourceType === 'stylesheet' && !blockedResources.some(domain => url.includes(domain))) {
-                return route.continue();
-            }
             return route.abort();
         }
 
