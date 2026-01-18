@@ -2,7 +2,7 @@ name: Lottery Scraper
 
 on:
   schedule:
-    - cron: '*/5 * * * *' # Every 5 minutes (backup)
+    - cron: '*/5 0-4,16-23 * * *' # Every 5 mins, 11 AM - 12 PM Local (UTC-5)
   workflow_dispatch: # Allows manual trigger from GitHub UI
   repository_dispatch: # Allows instant trigger from external tools like cron-job.org
     types: [run-scraper]
