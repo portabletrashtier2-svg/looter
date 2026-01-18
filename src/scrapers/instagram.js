@@ -5,6 +5,7 @@ const { parseLotteryResults } = require('../lib/parser');
 
 async function scrapeInstagram() {
     console.log('🚀 Starting Instagram Scraper...');
+    await cleanupOldResults();
 
     // Add more profiles here if needed
     const TARGET_PROFILES = [
@@ -114,6 +115,22 @@ async function scrapeInstagram() {
 
     await browser.close();
     console.log('\n🏁 Scraper process finished.');
+}
+
+async function cleanupOldResults() {
+    console.log('🧹 Cleaning up old data (Retention: 24h)...');
+    try {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { error } = await supabase
+            .from('lottery_results')
+            .delete()
+            .lt('created_at', oneDayAgo);
+
+        if (error) console.error('❌ Cleanup failed:', error.message);
+        else console.log('✅ Old records deleted successfully.');
+    } catch (e) {
+        console.error('❌ Error during cleanup:', e.message);
+    }
 }
 
 module.exports = { scrapeInstagram };
