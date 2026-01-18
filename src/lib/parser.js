@@ -85,23 +85,27 @@ function parseLotteryResults(text) {
         let ticaPrize = null;
         let monazoPrizes = [];
 
-        // 1. Find Tica prize after the primary anchor
+        // 1. Find Tica prize (Look around the primary anchor)
+        // We look both slightly above and below the anchor, as OCR order can be tricky
+        const searchRange = [];
         if (primaryAnchorIdx !== -1) {
-            for (let i = primaryAnchorIdx + 1; i < lines.length && i < primaryAnchorIdx + 10; i++) {
-                const line = lines[i];
+            // Check 3 lines above and 10 lines below
+            for (let i = Math.max(0, primaryAnchorIdx - 3); i < lines.length && i < primaryAnchorIdx + 10; i++) {
+                searchRange.push({ idx: i, line: lines[i] });
+            }
+        }
 
-                // SKIP if line contains a date (e.g., 18-1-2026)
-                if (dateLineRegex.test(line)) continue;
+        for (const item of searchRange) {
+            const line = item.line;
+            if (dateLineRegex.test(line)) continue;
 
-                // SKIP if line is a large number (e.g., draw 101)
-                if (line.match(/^\d{3,}$/)) continue;
-
-                // Match exactly 2 digits
-                const m = line.match(/\b\d{2}\b/);
-                if (m) {
-                    ticaPrize = m[0];
-                    break;
-                }
+            // Match 2 digits OR 3 digits (handle misreads like 101 for 01)
+            const m = line.match(/\b\d{2,3}\b/);
+            if (m) {
+                const val = m[0];
+                // Heuristic: If it's a 3-digit number starting with 1, it's often a misread 01
+                ticaPrize = val.length === 3 ? val.slice(-2) : val;
+                if (ticaPrize) break;
             }
         }
 
@@ -111,10 +115,11 @@ function parseLotteryResults(text) {
                 const line = lines[i];
                 if (dateLineRegex.test(line)) continue;
 
-                const lineMatches = line.match(/\b\d{2}\b/g) || [];
+                // Match 2-3 digits
+                const lineMatches = line.match(/\b\d{2,3}\b/g) || [];
                 for (const m of lineMatches) {
                     if (monazoPrizes.length < 2) {
-                        monazoPrizes.push(m);
+                        monazoPrizes.push(m.length === 3 ? m.slice(-2) : m);
                     }
                 }
                 if (monazoPrizes.length >= 2) break;
