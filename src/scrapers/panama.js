@@ -63,6 +63,9 @@ async function scrapePanama(targetDate = null) {
                 Object.defineProperty(navigator, 'webdriver', { get: () => false });
             });
 
+            // Catch logs from inside evaluate for debugging
+            page.on('console', msg => console.log(`[Panama Context] ${msg.text()}`));
+
             console.log('🌐 [Panama LNB] Navigating to lnb.gob.pa...');
 
             // Increased timeout to 120s because the site is very slow
@@ -94,20 +97,37 @@ async function scrapePanama(targetDate = null) {
                     'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
                 const targetMonth = monthNames[m - 1];
 
+                console.log(`🔎 Searching for draw: ${d} ${targetMonth} ${y}`);
+
                 const containers = document.querySelectorAll('div.containerTablero');
+                console.log(`Found ${containers.length} potential result boards.`);
+
                 for (const container of containers) {
                     const dateEl = container.querySelector('.date');
                     if (!dateEl) continue;
+
                     const dateText = dateEl.innerText.trim().toLowerCase();
-                    if (dateText.includes(d.toString()) && dateText.includes(targetMonth) && dateText.includes(y.toString())) {
+                    console.log(`Checking board with date info: "${dateText.replace(/\s+/g, ' ')}"`);
+
+                    // Use regex for robust matching (handles newlines, extra spaces, and varies formats)
+                    // Matches day as isolated number, and contains month/year
+                    const dayRegex = new RegExp(`(^|\\D)${d}(\\D|$)`);
+                    if (dayRegex.test(dateText) && dateText.includes(targetMonth) && dateText.includes(y.toString())) {
+                        console.log('✅ Found a date match!');
                         const prizes = [];
                         const premioBlocks = container.querySelectorAll('.premio-number');
-                        premioBlocks.forEach(el => prizes.push(el.innerText.trim()));
+                        premioBlocks.forEach(el => {
+                            const val = el.innerText.trim().replace(/[^0-9]/g, '');
+                            if (val) prizes.push(val);
+                        });
+
+                        console.log(`📊 Extracted prize numbers: ${prizes.join(', ')}`);
                         if (prizes.length >= 3) {
                             return { time: '3:30 PM', numbers: prizes.slice(0, 3) };
                         }
                     }
                 }
+                console.log('❌ No matching board found for this date.');
                 return null;
             }, { d: day, m: month, y: year });
 
