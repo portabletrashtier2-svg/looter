@@ -21,6 +21,7 @@ function parseLotteryResults(text) {
         'LA FLORIDA': 'USA',
         'CHIRIQUI TICA': 'Costa Rica',
         'HONDUREÑA': 'Honduras',
+        'LA PRIMERA': 'Dominican Republic',
         'DIARIA': 'Costa Rica' // Often Used for Tica
     };
 
