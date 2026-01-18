@@ -10,8 +10,7 @@ function parseLotteryResults(text) {
     let date = null;
     let numbers = [];
 
-    // Game Mapping (Ordered by priority/specificity)
-    // Values match DRAW_NAME_MAPPING keys in the main app
+    // 1. Game Identification
     const GAME_MAP = {
         'LA NICA': 'Nicaragua',
         'LA TICA': 'Costa Rica',
@@ -25,21 +24,14 @@ function parseLotteryResults(text) {
         'DIARIA': 'Costa Rica' // Often Used for Tica
     };
 
-    // Try to find game
     for (const [key, value] of Object.entries(GAME_MAP)) {
         if (text.toUpperCase().includes(key)) {
-            // Special check: If we found a generic match like CHIRIQUI TICA, 
-            // but the text ALSO has something more specific like LA NICA, 
-            // priority should go to the more specific one.
-            // Our map order helps, but we can also check for actual core game names.
             game = value;
-
-            // If it's a "Real" game name (not the profile name), we can stop
             if (!key.includes('CHIRIQUI')) break;
         }
     }
 
-    // Try to find date (DD-MM-YYYY or DD/MM/YYYY)
+    // 2. Date Extraction
     const dateRegex = /(\d{1,2})[-/](\d{1,2})[-/](\d{4})/;
     const dateMatch = text.match(dateRegex);
     if (dateMatch) {
@@ -47,22 +39,15 @@ function parseLotteryResults(text) {
         let month = dateMatch[2].padStart(2, '0');
         let year = dateMatch[3];
 
-        // Smart Correction: Handle "Happy New Year" typos
-        // If it's currently 2026 and the card says 2025 during January/February, 
-        // it's 99% a typo on the Instagram card.
         const currentYear = new Date().getFullYear();
         if (currentYear === 2026 && year === '2025') {
-            const currentMonth = new Date().getMonth(); // 0 = Jan
-            if (currentMonth <= 1) { // Jan or Feb
-                console.log(`🪄 Auto-correcting year from ${year} to ${currentYear} (New Year typo detected)`);
-                year = currentYear.toString();
-            }
+            const currentMonth = new Date().getMonth();
+            if (currentMonth <= 1) year = currentYear.toString();
         }
-
         date = `${year}-${month}-${day}`;
     }
 
-    // Try to find time (Looking for HH:MM AM/PM or HH:MM)
+    // 3. Time Extraction
     const timeRegex = /(\d{1,2}:\d{2})\s*(AM|PM)?/i;
     const timeMatch = text.match(timeRegex);
     let rawTime = null;
@@ -70,94 +55,80 @@ function parseLotteryResults(text) {
         rawTime = timeMatch[0].trim();
     }
 
-    // Extract numbers (Looking for 2-digit patterns that appear prominently)
+    // 4. Number Extraction (Isolate per Country)
     if (game === 'Costa Rica') {
-        const dateLineRegex = /\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/;
+        numbers = parseCostaRicaNumbers(text, lines);
+    } else {
+        numbers = parseGenericNumbers(text, lines);
+    }
 
-        // Find anchors
-        const diariaIdx = lines.findIndex(l => l.includes('DIARIA'));
-        const ticaIdx = lines.findIndex(l => l.includes('TICA'));
-        const monazosIdx = lines.findIndex(l => l.includes('MONAZOS'));
+    return { game, date, numbers, rawTime, raw: text };
+}
 
-        // Anchor logic: Prefer DIARIA. Use TICA only as fallback.
-        const primaryAnchorIdx = diariaIdx !== -1 ? diariaIdx : ticaIdx;
+/**
+ * Specialized parser for Costa Rica (Tica / Monazos)
+ * Uses keyword anchors and handles digit misreads
+ */
+function parseCostaRicaNumbers(text, lines) {
+    const dateLineRegex = /\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/;
+    const diariaIdx = lines.findIndex(l => l.includes('DIARIA'));
+    const ticaIdx = lines.findIndex(l => l.includes('TICA'));
+    const monazosIdx = lines.findIndex(l => l.includes('MONAZOS'));
 
-        let ticaPrize = null;
-        let monazoPrizes = [];
+    const primaryAnchorIdx = diariaIdx !== -1 ? diariaIdx : ticaIdx;
+    let ticaPrize = null;
+    let monazoPrizes = [];
 
-        // 1. Find Tica prize (Look around the primary anchor)
-        // We look both slightly above and below the anchor, as OCR order can be tricky
-        const searchRange = [];
-        if (primaryAnchorIdx !== -1) {
-            // Check 3 lines above and 10 lines below
-            for (let i = Math.max(0, primaryAnchorIdx - 3); i < lines.length && i < primaryAnchorIdx + 10; i++) {
-                searchRange.push({ idx: i, line: lines[i] });
-            }
-        }
-
-        for (const item of searchRange) {
-            const line = item.line;
+    // 1. Tica Prize (DIARIA)
+    if (primaryAnchorIdx !== -1) {
+        for (let i = Math.max(0, primaryAnchorIdx - 3); i < lines.length && i < primaryAnchorIdx + 10; i++) {
+            const line = lines[i];
             if (dateLineRegex.test(line)) continue;
-
-            // Match 2 digits OR 3 digits (handle misreads like 101 for 01)
             const m = line.match(/\b\d{2,3}\b/);
             if (m) {
                 const val = m[0];
-                // Heuristic: If it's a 3-digit number starting with 1, it's often a misread 01
                 ticaPrize = val.length === 3 ? val.slice(-2) : val;
                 if (ticaPrize) break;
             }
         }
+    }
 
-        // 2. Find Monazo prizes strictly after "MONAZOS"
-        if (monazosIdx !== -1) {
-            for (let i = monazosIdx + 1; i < lines.length; i++) {
-                const line = lines[i];
-                if (dateLineRegex.test(line)) continue;
-
-                // Match 2-3 digits
-                const lineMatches = line.match(/\b\d{2,3}\b/g) || [];
-                for (const m of lineMatches) {
-                    if (monazoPrizes.length < 2) {
-                        monazoPrizes.push(m.length === 3 ? m.slice(-2) : m);
-                    }
+    // 2. Monazo Prizes (MONAZOS)
+    if (monazosIdx !== -1) {
+        for (let i = monazosIdx + 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (dateLineRegex.test(line)) continue;
+            const lineMatches = line.match(/\b\d{2,3}\b/g) || [];
+            for (const m of lineMatches) {
+                if (monazoPrizes.length < 2) {
+                    monazoPrizes.push(m.length === 3 ? m.slice(-2) : m);
                 }
-                if (monazoPrizes.length >= 2) break;
             }
-        }
-
-        if (ticaPrize && monazoPrizes.length === 2) {
-            numbers = [ticaPrize, ...monazoPrizes];
+            if (monazoPrizes.length >= 2) break;
         }
     }
 
-    // Fallback: Generic extraction if specialized logic failed or for other games
-    if (numbers.length === 0) {
-        // 1. Clean the text to remove dates and phone numbers
-        const cleanText = text
-            .replace(/\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/g, ' ') // dates
-            .replace(/\d{4}\s*[-\s]\s*\d{4}/g, ' ');                     // phones
+    return (ticaPrize && monazoPrizes.length === 2) ? [ticaPrize, ...monazoPrizes] : [];
+}
 
-        // 2. Extract all digit sequences and filter for exactly 2 digits
-        // Improved: match only 2-digit numbers NOT part of larger numbers
-        const allMatches = cleanText.match(/\b\d{2}\b/g) || [];
+/**
+ * Generic parser for other countries (Nicaragua, Honduras, USA, etc.)
+ * Uses traditional fallback logic: clean text and take last 3 numbers.
+ */
+function parseGenericNumbers(text, lines) {
+    // 1. Clean the text to remove dates and phone numbers
+    const cleanText = text
+        .replace(/\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/g, ' ') // dates
+        .replace(/\d{4}\s*[-\s]\s*\d{4}/g, ' ');                     // phones
 
-        // Remove common draw numbers (heuristic: usually at the beginning)
-        // If we have more than 3 numbers, the ones after the draw number are likely the results
-        if (allMatches.length > 3) {
-            numbers = allMatches.slice(-3);
-        } else {
-            numbers = allMatches;
-        }
+    // 2. Extract exactly 2-digit numbers
+    const allMatches = cleanText.match(/\b\d{2}\b/g) || [];
+
+    // Heuristic: Results are usually the last prominent 2-digit numbers
+    if (allMatches.length > 3) {
+        return allMatches.slice(-3);
     }
-
-    return {
-        game,
-        date,
-        numbers,
-        rawTime,
-        raw: text
-    };
+    return allMatches;
 }
 
 module.exports = { parseLotteryResults };
