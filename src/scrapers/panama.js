@@ -2,6 +2,8 @@ const { chromium } = require('playwright-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const { DateTime } = require('luxon');
 const { supabase } = require('../lib/supabase');
+const { enableAdBlocker } = require('../utils/resource-blocker');
+const { setRandomUserAgent } = require('../utils/user-agent');
 
 // Add stealth plugin
 chromium.use(StealthPlugin());
@@ -39,12 +41,21 @@ async function scrapePanama(targetDate = null) {
 
         const browser = await chromium.launch({
             headless: true,
-            args: ['--disable-blink-features=AutomationControlled']
+            args: [
+                '--disable-blink-features=AutomationControlled',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage'
+            ]
         });
 
         try {
             const context = await browser.newContext();
             const page = await context.newPage();
+
+            // Set random user agent and block ads to speed up
+            await setRandomUserAgent(page);
+            await enableAdBlocker(page);
 
             // Simple Stealth and Anti-detection
             await page.addInitScript(() => {
@@ -52,13 +63,30 @@ async function scrapePanama(targetDate = null) {
             });
 
             console.log('🌐 [Panama LNB] Navigating to lnb.gob.pa...');
+
+            // Increased timeout to 120s because the site is very slow
+            // Using 'commit' to get in fast and then wait for actual elements
             await page.goto('https://www.lnb.gob.pa/', {
-                waitUntil: 'domcontentloaded',
-                timeout: 60000
+                waitUntil: 'commit',
+                timeout: 120000
             });
 
-            console.log('⏳ [Panama LNB] Waiting for content boxes (15s)...');
-            await page.waitForTimeout(15000);
+            console.log('⏳ [Panama LNB] Waiting for content... (Max 60s)');
+
+            // Wait for the loader to vanish OR wait for the actual results table
+            try {
+                // First wait for the containerTablero which holds the values
+                await page.waitForSelector('div.containerTablero', {
+                    state: 'visible',
+                    timeout: 60000
+                });
+                console.log('✅ [Panama LNB] Results table detected.');
+            } catch (e) {
+                console.log('⚠️ [Panama LNB] Timeout waiting for table, trying to parse current state anyway.');
+            }
+
+            // Extra breath to ensure animations finished
+            await page.waitForTimeout(5000);
 
             const result = await page.evaluate(({ d, m, y }) => {
                 const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -101,7 +129,7 @@ async function scrapePanama(targetDate = null) {
                     return; // Successfully found and saved, end scavenger run
                 }
             } else {
-                console.log(`⚠️ [Panama LNB] Results not published yet.`);
+                console.log(`⚠️ [Panama LNB] Results not published yet or date match failed.`);
             }
 
         } catch (error) {
