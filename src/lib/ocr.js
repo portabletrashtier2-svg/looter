@@ -16,7 +16,7 @@ async function performOCR(imageUrl) {
     form.append('apikey', OCR_SPACE_KEY);
     form.append('language', 'spa'); // Spanish
     form.append('isOverlayRequired', 'false');
-    form.append('OCREngine', '1'); // Engine 1 is often more accurate for standard clean fonts
+    form.append('OCREngine', '2'); // Engine 2 is better for stylized text/backgrounds
 
     try {
         const response = await axios.post('https://api.ocr.space/parse/image', form, {
