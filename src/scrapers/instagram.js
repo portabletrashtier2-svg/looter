@@ -75,19 +75,30 @@ async function scrapeInstagram() {
                     const rawText = await performOCR(post.img);
                     const results = parseLotteryResults(rawText);
 
-                    if (results.game && results.date && results.numbers.length > 0) {
-                        const { error } = await supabase
-                            .from('lottery_results')
-                            .insert([{
-                                country: results.game,
-                                draw_date: results.date,
-                                data: { time: 'Manual', numbers: results.numbers },
-                                external_id: postID,
-                                raw_ocr: rawText
-                            }]);
+                    // Determine what to save (even if parsing fails we save to avoid re-OCR)
+                    const isLottery = results.game && results.date && results.numbers.length > 0;
 
-                        if (error) console.error('❌ Insert error:', error.message);
-                        else console.log(`✅ Saved: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
+                    const payload = {
+                        country: isLottery ? results.game : 'junk',
+                        draw_date: isLottery ? results.date : '1000-01-01', // Dummy date for non-lottery posts
+                        data: {
+                            time: isLottery ? (results.rawTime || 'Manual') : 'none',
+                            numbers: isLottery ? results.numbers : []
+                        },
+                        external_id: postID,
+                        raw_ocr: rawText
+                    };
+
+                    const { error } = await supabase.from('lottery_results').insert([payload]);
+
+                    if (error) {
+                        console.error('❌ Insert error:', error.message);
+                    } else {
+                        if (isLottery) {
+                            console.log(`✅ Saved Result: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
+                        } else {
+                            console.log('💾 Market as processed (No lottery data found in this post).');
+                        }
                     }
                 } catch (innerError) {
                     console.error(`❌ Error parsing post ${postID}:`, innerError.message);
