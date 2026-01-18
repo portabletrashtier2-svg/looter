@@ -72,30 +72,48 @@ function parseLotteryResults(text) {
 
     // Extract numbers (Looking for 2-digit patterns that appear prominently)
     if (game === 'Costa Rica') {
-        const diariaIdx = lines.findIndex(l => l.includes('DIARIA') || l.includes('TICA'));
+        const dateLineRegex = /\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/;
+
+        // Find anchors
+        const diariaIdx = lines.findIndex(l => l.includes('DIARIA'));
+        const ticaIdx = lines.findIndex(l => l.includes('TICA'));
         const monazosIdx = lines.findIndex(l => l.includes('MONAZOS'));
+
+        // Anchor logic: Prefer DIARIA. Use TICA only as fallback.
+        const primaryAnchorIdx = diariaIdx !== -1 ? diariaIdx : ticaIdx;
 
         let ticaPrize = null;
         let monazoPrizes = [];
 
-        // 1. Find Tica prize after "DIARIA" or "TICA"
-        if (diariaIdx !== -1) {
-            for (let i = diariaIdx + 1; i < lines.length && i < diariaIdx + 10; i++) {
-                // Ignore lines that look like draw numbers (e.g., 101, 102)
-                const m = lines[i].match(/\b\d{2}\b/);
-                if (m && !lines[i].match(/^\d{3,}$/)) {
+        // 1. Find Tica prize after the primary anchor
+        if (primaryAnchorIdx !== -1) {
+            for (let i = primaryAnchorIdx + 1; i < lines.length && i < primaryAnchorIdx + 10; i++) {
+                const line = lines[i];
+
+                // SKIP if line contains a date (e.g., 18-1-2026)
+                if (dateLineRegex.test(line)) continue;
+
+                // SKIP if line is a large number (e.g., draw 101)
+                if (line.match(/^\d{3,}$/)) continue;
+
+                // Match exactly 2 digits
+                const m = line.match(/\b\d{2}\b/);
+                if (m) {
                     ticaPrize = m[0];
                     break;
                 }
             }
         }
 
-        // 2. Find Monazo prizes after "MONAZOS"
+        // 2. Find Monazo prizes strictly after "MONAZOS"
         if (monazosIdx !== -1) {
             for (let i = monazosIdx + 1; i < lines.length; i++) {
-                const lineMatches = lines[i].match(/\d+/g) || [];
+                const line = lines[i];
+                if (dateLineRegex.test(line)) continue;
+
+                const lineMatches = line.match(/\b\d{2}\b/g) || [];
                 for (const m of lineMatches) {
-                    if (m.length === 2 && monazoPrizes.length < 2) {
+                    if (monazoPrizes.length < 2) {
                         monazoPrizes.push(m);
                     }
                 }
