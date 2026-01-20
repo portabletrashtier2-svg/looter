@@ -76,44 +76,57 @@ function parseLotteryResults(text) {
  */
 function parseCostaRicaNumbers(text, lines) {
     const dateLineRegex = /\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/;
-    const diariaIdx = lines.findIndex(l => l.includes('DIARIA'));
-    const ticaIdx = lines.findIndex(l => l.includes('TICA'));
     const monazosIdx = lines.findIndex(l => l.includes('MONAZOS'));
 
-    const primaryAnchorIdx = diariaIdx !== -1 ? diariaIdx : ticaIdx;
-    let ticaPrize = null;
-    let monazoPrizes = [];
+    let results = [];
 
-    // 1. Tica Prize (DIARIA)
-    if (primaryAnchorIdx !== -1) {
-        for (let i = Math.max(0, primaryAnchorIdx - 3); i < lines.length && i < primaryAnchorIdx + 10; i++) {
-            const line = lines[i];
-            if (dateLineRegex.test(line)) continue;
-            const m = line.match(/\b\d{2,3}\b/);
-            if (m) {
-                const val = m[0];
-                ticaPrize = val.length === 3 ? val.slice(-2) : val;
-                if (ticaPrize) break;
-            }
-        }
-    }
-
-    // 2. Monazo Prizes (MONAZOS)
+    // 1. Prioritize MONAZOS block (this Instagram profile labels Monazos as [Tica, Pair1, Pair2])
     if (monazosIdx !== -1) {
         for (let i = monazosIdx + 1; i < lines.length; i++) {
             const line = lines[i];
             if (dateLineRegex.test(line)) continue;
-            const lineMatches = line.match(/\b\d{2,3}\b/g) || [];
+
+            // Extract all 2-digit numbers
+            const lineMatches = line.match(/\b\d{2}\b/g) || [];
             for (const m of lineMatches) {
-                if (monazoPrizes.length < 2) {
-                    monazoPrizes.push(m.length === 3 ? m.slice(-2) : m);
+                if (results.length < 3) {
+                    results.push(m);
                 }
             }
-            if (monazoPrizes.length >= 2) break;
+            if (results.length >= 3) break;
         }
     }
 
-    return (ticaPrize && monazoPrizes.length === 2) ? [ticaPrize, ...monazoPrizes] : [];
+    // 2. Fallback to DIARIA or general extraction if Monazos didn't provide enough
+    if (results.length < 3) {
+        const diariaIdx = lines.findIndex(l => l.includes('DIARIA'));
+        const ticaIdx = lines.findIndex(l => l.includes('TICA'));
+        const primaryAnchorIdx = diariaIdx !== -1 ? diariaIdx : ticaIdx;
+
+        if (primaryAnchorIdx !== -1) {
+            for (let i = Math.max(0, primaryAnchorIdx - 3); i < lines.length && i < primaryAnchorIdx + 10; i++) {
+                const line = lines[i];
+                if (dateLineRegex.test(line)) continue;
+                const m = line.match(/\b\d{2}\b/);
+                if (m && !results.includes(m[0])) {
+                    results.unshift(m[0]); // Add Tica to the front
+                    break;
+                }
+            }
+        }
+
+        // Final fallback: take whatever pairs we found in the whole text
+        if (results.length < 3) {
+            const allMatches = text.match(/\b\d{2}\b/g) || [];
+            for (const m of allMatches) {
+                if (!results.includes(m) && results.length < 3) {
+                    results.push(m);
+                }
+            }
+        }
+    }
+
+    return results.slice(0, 3);
 }
 
 /**
