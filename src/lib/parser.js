@@ -213,14 +213,25 @@ function parseGenericNumbers(text, lines) {
         .replace(/\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/g, ' ') // dates
         .replace(/\d{4}\s*[-\s]\s*\d{4}/g, ' ');                     // phones
 
-    // 2. Extract exactly 2-digit numbers
-    const allMatches = cleanText.match(/\b\d{2}\b/g) || [];
+    // 2. Extract 2-digit numbers (more permissive without \b)
+    const allMatches = cleanText.match(/\d{2}/g) || [];
+
+    // 3. Filter out common false positives (like 2026, 12:00, etc.)
+    const results = allMatches.filter(m => {
+        const val = parseInt(m);
+        // Avoid parts of years (20, 26) or other common non-lottery numbers
+        if (val === 20 || val === 26 || val === 25) {
+            // Check if it was part of a date in the original text nearby
+            if (text.includes(`20${m}`) || text.includes(`${m}/`) || text.includes(`${m}-`)) return false;
+        }
+        return true;
+    });
 
     // Heuristic: Results are usually the last prominent 2-digit numbers
-    if (allMatches.length > 3) {
-        return allMatches.slice(-3);
+    if (results.length > 3) {
+        return results.slice(-3);
     }
-    return allMatches;
+    return results;
 }
 
 module.exports = { parseLotteryResults };

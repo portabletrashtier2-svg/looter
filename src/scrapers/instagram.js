@@ -64,41 +64,71 @@ async function scrapeInstagram() {
 
                 const { data: existing } = await supabase
                     .from('lottery_results')
-                    .select('id')
+                    .select('id, data, country')
                     .eq('external_id', postID)
                     .single();
 
-                if (existing) continue;
+                // If existing and complete (has at least 3 numbers or is junk marked as 'junk'), skip
+                const existingNumbers = existing?.data?.numbers || [];
+                if (existing && (existingNumbers.length >= 3 || existing.country === 'junk')) {
+                    continue;
+                }
 
-                console.log(`✨ New result found: ${post.url}`);
+                if (existing) {
+                    console.log(`🔄 Re-processing incomplete result: ${post.url}`);
+                } else {
+                    console.log(`✨ New result found: ${post.url}`);
+                }
 
                 try {
-                    const rawText = await performOCR(post.img);
-                    const results = parseLotteryResults(rawText);
+                    // Try Engine 2 first
+                    let rawText = await performOCR(post.img, '2');
+                    let results = parseLotteryResults(rawText);
 
-                    // Determine what to save (even if parsing fails we save to avoid re-OCR)
+                    // Fallback to Engine 1 if less than 3 numbers found for a recognized country
+                    if (results.game && results.game !== 'junk' && results.numbers.length < 3) {
+                        console.log(`⚠️  Few results with Engine 2 (${results.numbers.length}). Trying Engine 1 fallback...`);
+                        const rawTextFallback = await performOCR(post.img, '1');
+                        const resultsFallback = parseLotteryResults(rawTextFallback);
+
+                        if (resultsFallback.numbers.length > results.numbers.length) {
+                            console.log(`✅ Engine 1 found MORE results (${resultsFallback.numbers.length}). Using it.`);
+                            rawText = rawTextFallback;
+                            results = resultsFallback;
+                        }
+                    }
+
+                    // Determine what to save
                     const isLottery = results.game && results.date && results.numbers.length > 0;
 
                     const payload = {
                         country: isLottery ? results.game : 'junk',
-                        draw_date: isLottery ? results.date : '1000-01-01', // Dummy date for non-lottery posts
+                        draw_date: isLottery ? results.date : '1000-01-01',
                         data: {
                             time: isLottery ? (results.rawTime || 'Manual') : 'none',
                             numbers: isLottery ? results.numbers : []
                         },
                         external_id: postID,
-                        raw_ocr: rawText
+                        raw_ocr: rawText,
+                        scraped_at: new Date().toISOString()
                     };
 
-                    const { error } = await supabase.from('lottery_results').insert([payload]);
+                    let dbOp;
+                    if (existing) {
+                        dbOp = supabase.from('lottery_results').update(payload).eq('id', existing.id);
+                    } else {
+                        dbOp = supabase.from('lottery_results').insert([payload]);
+                    }
+
+                    const { error } = await dbOp;
 
                     if (error) {
-                        console.error('❌ Insert error:', error.message);
+                        console.error('❌ Database error:', error.message);
                     } else {
                         if (isLottery) {
-                            console.log(`✅ Saved Result: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
+                            console.log(`✅ ${existing ? 'Updated' : 'Saved'} Result: ${results.game} | ${results.date} | ${results.numbers.join('-')}`);
                         } else {
-                            console.log('💾 Market as processed (No lottery data found in this post).');
+                            console.log('💾 Market as processed (No lottery data found).');
                         }
                     }
                 } catch (innerError) {
