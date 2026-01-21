@@ -82,38 +82,33 @@ function parseHondurasNumbers(text, lines) {
 
     // 1. DIARIA (1 number)
     // Match DIARIA, DIAR1A, D1AR1A, etc.
-    const diariaRegex = /D[I1][A4]R[I1][A4]/;
+    const diariaRegex = /D[I1][A4]R[I1][A4]/i;
     const diariaIdx = lines.findIndex(l => diariaRegex.test(l));
 
     if (diariaIdx !== -1) {
-        // Look in current or next 3 lines
-        for (let i = diariaIdx; i < diariaIdx + 4 && i < lines.length; i++) {
+        // Look in current or next 12 lines
+        for (let i = diariaIdx; i < diariaIdx + 12 && i < lines.length; i++) {
             const line = lines[i];
             // Skip lines that look like dates or labels
-            if (line.includes('/') || line.includes('-') && line.length > 10) continue;
+            if ((line.includes('/') || line.includes('-')) && line.length > 10) continue;
 
-            const matches = line.match(/\b\d{2}\b/g) || [];
-            for (const m of matches) {
-                // Heuristic: Avoid common numbers like "11" or "12" if they correspond to the time
-                // (This is risky but often necessary if the time is right next to the result)
-                if (results.length === 0) {
-                    results.push(m);
-                    break;
-                }
+            const matches = line.match(/\b\d{2}\b/g);
+            if (matches) {
+                results.push(matches[0]);
+                break;
             }
-            if (results.length > 0) break;
         }
     }
 
     // 2. PREMIADOS (2 numbers)
-    const premiadosRegex = /PREM[I1][A4]D[O0]S/;
+    const premiadosRegex = /PREM[I1][A4]D[O0]S/i;
     const premiadosIdx = lines.findIndex(l => premiadosRegex.test(l));
 
     if (premiadosIdx !== -1) {
         let found = 0;
-        for (let i = premiadosIdx; i < premiadosIdx + 5 && i < lines.length; i++) {
+        for (let i = premiadosIdx; i < premiadosIdx + 12 && i < lines.length; i++) {
             const line = lines[i];
-            if (line.includes('/') || line.includes('-') && line.length > 10) continue;
+            if ((line.includes('/') || line.includes('-')) && line.length > 10) continue;
 
             const matches = line.match(/\b\d{2}\b/g) || [];
             for (const m of matches) {
