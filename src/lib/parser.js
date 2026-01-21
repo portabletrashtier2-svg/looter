@@ -79,42 +79,48 @@ function parseLotteryResults(text) {
  */
 function parseHondurasNumbers(text, lines) {
     let results = [];
+    console.log(`[Parser] Specialized Honduras start. Total lines: ${lines.length}`);
 
     // 1. DIARIA (1 number)
-    // Match DIARIA, DIAR1A, D1AR1A, etc.
-    const diariaRegex = /D[I1][A4]R[I1][A4]/i;
-    const diariaIdx = lines.findIndex(l => diariaRegex.test(l));
+    const diariaIdx = lines.findIndex(l => l.includes('DIARIA') || l.includes('DIAR') || l.includes('DIAR1A') || l.includes('D1AR'));
 
     if (diariaIdx !== -1) {
-        // Look in current or next 12 lines
-        for (let i = diariaIdx; i < diariaIdx + 12 && i < lines.length; i++) {
+        console.log(`[Parser] DIARIA found at line ${diariaIdx}: "${lines[diariaIdx]}"`);
+        // Look in current or next 20 lines
+        for (let i = diariaIdx; i < diariaIdx + 20 && i < lines.length; i++) {
             const line = lines[i];
-            // Skip lines that look like dates or labels
-            if ((line.includes('/') || line.includes('-')) && line.length > 10) continue;
 
-            const matches = line.match(/\b\d{2}\b/g);
-            if (matches) {
-                results.push(matches[0]);
+            // Skip dates/times/labels (Honduras specific filters)
+            if (line.includes('/') || line.includes(':') || line.includes('CON') || line.length > 15) continue;
+
+            const matches = line.match(/\d{2}/g) || [];
+            // We want the FIRST clear 2-digit number after DIARIA
+            const validMatches = matches.filter(m => !lines[diariaIdx].includes(m)); // avoid matching numbers in the keyword line itself
+
+            if (validMatches.length > 0) {
+                results.push(validMatches[0]);
+                console.log(`[Parser]   DIARIA number found: ${validMatches[0]} at line ${i}`);
                 break;
             }
         }
     }
 
     // 2. PREMIADOS (2 numbers)
-    const premiadosRegex = /PREM[I1][A4]D[O0]S/i;
-    const premiadosIdx = lines.findIndex(l => premiadosRegex.test(l));
+    const premiadosIdx = lines.findIndex(l => l.includes('PREMIADOS') || l.includes('PREM') || l.includes('PREM1A'));
 
     if (premiadosIdx !== -1) {
+        console.log(`[Parser] PREMIADOS found at line ${premiadosIdx}: "${lines[premiadosIdx]}"`);
         let found = 0;
-        for (let i = premiadosIdx; i < premiadosIdx + 12 && i < lines.length; i++) {
+        for (let i = premiadosIdx; i < premiadosIdx + 20 && i < lines.length; i++) {
             const line = lines[i];
-            if ((line.includes('/') || line.includes('-')) && line.length > 10) continue;
+            if (line.includes('/') || line.includes(':') || line.length > 15) continue;
 
-            const matches = line.match(/\b\d{2}\b/g) || [];
+            const matches = line.match(/\d{2}/g) || [];
             for (const m of matches) {
                 if (found < 2 && !results.includes(m)) {
                     results.push(m);
                     found++;
+                    console.log(`[Parser]   PREMIADOS number ${found} found: ${m} at line ${i}`);
                 }
             }
             if (found >= 2) break;
@@ -123,7 +129,7 @@ function parseHondurasNumbers(text, lines) {
 
     // Fallback if specialized parsing failed to get 3 numbers
     if (results.length < 3) {
-        console.log('⚠️ Honduras specialized parsing incomplete (' + results.length + ' found), falling back to generic.');
+        console.log(`⚠️ Honduras specialized parsing incomplete (${results.length} found: ${results.join('-')}), falling back to generic.`);
         const generic = parseGenericNumbers(text, lines);
 
         if (results.length === 0) return generic;
