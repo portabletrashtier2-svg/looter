@@ -23,7 +23,9 @@ function parseLotteryResults(text) {
         'LA FLORIDA': 'USA',
         'CHIRIQUI TICA': 'Costa Rica',
         'HONDUREÑA': 'Honduras',
-        'DIARIA': 'Costa Rica' // Often Used for Tica
+        'HONDURAS': 'Honduras',
+        'LOTO': 'Honduras',
+        'DIARIA': 'Costa Rica' // Fallback for Tica, but Honduras check happens first
     };
 
     // Priority Check: Find the most specific match first
@@ -31,7 +33,7 @@ function parseLotteryResults(text) {
         if (text.toUpperCase().includes(key)) {
             game = value;
             // If we found a specific country match, we can stop unless it's a multi-country keyword
-            if (['Dominican Republic', 'Nicaragua', 'USA', 'Honduras'].includes(value)) break;
+            if (['Honduras', 'Dominican Republic', 'Nicaragua', 'USA'].includes(value)) break;
         }
     }
 
@@ -63,11 +65,65 @@ function parseLotteryResults(text) {
     // 4. Number Extraction (Isolate per Country)
     if (game === 'Costa Rica') {
         numbers = parseCostaRicaNumbers(text, lines);
+    } else if (game === 'Honduras') {
+        numbers = parseHondurasNumbers(text, lines);
     } else {
         numbers = parseGenericNumbers(text, lines);
     }
 
     return { game, date, numbers, rawTime, raw: text };
+}
+
+/**
+ * Specialized parser for Honduras (Diaria / Premiados)
+ */
+function parseHondurasNumbers(text, lines) {
+    let results = [];
+
+    // 1. DIARIA (1 number)
+    const diariaIdx = lines.findIndex(l => l.includes('DIARIA'));
+    if (diariaIdx !== -1) {
+        // Look in current or next 2 lines
+        for (let i = diariaIdx; i < diariaIdx + 3 && i < lines.length; i++) {
+            const m = lines[i].match(/\b\d{2}\b/);
+            if (m) {
+                results.push(m[0]);
+                break;
+            }
+        }
+    }
+
+    // 2. PREMIADOS (2 numbers)
+    const premiadosIdx = lines.findIndex(l => l.includes('PREMIADOS'));
+    if (premiadosIdx !== -1) {
+        let found = 0;
+        for (let i = premiadosIdx; i < premiadosIdx + 4 && i < lines.length; i++) {
+            const matches = lines[i].match(/\b\d{2}\b/g) || [];
+            for (const m of matches) {
+                if (found < 2) {
+                    results.push(m);
+                    found++;
+                }
+            }
+            if (found >= 2) break;
+        }
+    }
+
+    // Fallback if specialized parsing failed to get 3 numbers
+    if (results.length < 3) {
+        console.log('⚠️ Honduras specialized parsing incomplete, falling back to generic.');
+        const generic = parseGenericNumbers(text, lines);
+        // Merge or replace
+        if (results.length === 0) return generic;
+        // If we have some, try to fill from generic
+        for (const n of generic) {
+            if (results.length < 3 && !results.includes(n)) {
+                results.push(n);
+            }
+        }
+    }
+
+    return results;
 }
 
 /**
