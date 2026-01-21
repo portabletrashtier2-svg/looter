@@ -3,6 +3,34 @@ const { supabase } = require('../lib/supabase');
 const { performOCR } = require('../lib/ocr');
 const { parseLotteryResults } = require('../lib/parser');
 
+/**
+ * Merges two lottery number sequences using common anchors to preserve order.
+ * Example: [60, 27] + [77, 27] = [60, 77, 27]
+ */
+function mergeLotterySequences(primary, secondary) {
+    if (!primary || primary.length === 0) return secondary;
+    if (!secondary || secondary.length === 0) return primary;
+
+    // Use a set to keep track of all unique numbers
+    const all = new Set([...primary, ...secondary]);
+
+    // If there's no overlap, we just have to append (risky)
+    const overlap = primary.filter(n => secondary.includes(n));
+    if (overlap.length === 0) {
+        return [...new Set([...primary, ...secondary])];
+    }
+
+    // Heuristic: Use the first overlapping number as the main anchor
+    const anchor = overlap[0];
+    const prePrimary = primary.slice(0, primary.indexOf(anchor));
+    const preSecondary = secondary.slice(0, secondary.indexOf(anchor)).filter(n => !prePrimary.includes(n));
+
+    const postPrimary = primary.slice(primary.indexOf(anchor) + 1);
+    const postSecondary = secondary.slice(secondary.indexOf(anchor) + 1).filter(n => !postPrimary.includes(n));
+
+    return [...prePrimary, ...preSecondary, anchor, ...postPrimary, ...postSecondary];
+}
+
 async function scrapeInstagram() {
     console.log('🚀 Starting Instagram Scraper...');
     await cleanupOldResults();
@@ -91,12 +119,12 @@ async function scrapeInstagram() {
                         const rawTextFallback = await performOCR(post.img, '1');
                         const resultsFallback = parseLotteryResults(rawTextFallback);
 
-                        // Merge logic: Combine unique numbers from both, respecting the order detected
-                        const combinedNumbers = [...new Set([...results.numbers, ...resultsFallback.numbers])];
+                        // Smart merge logic to interleave sequences
+                        const merged = mergeLotterySequences(results.numbers, resultsFallback.numbers);
 
-                        if (combinedNumbers.length > results.numbers.length) {
-                            console.log(`✅ Merged results! Engine 1 helped find ${combinedNumbers.length} total numbers.`);
-                            results.numbers = combinedNumbers;
+                        if (merged.length > results.numbers.length) {
+                            console.log(`✅ Merged results! New sequence: ${merged.join('-')}`);
+                            results.numbers = merged;
                             // Prepend OCR texts for transparency
                             rawText = `--- ENGINE 2 ---\n${rawText}\n\n--- ENGINE 1 ---\n${rawTextFallback}`;
                         }
