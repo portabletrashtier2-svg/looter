@@ -85,16 +85,20 @@ async function scrapeInstagram() {
                     let rawText = await performOCR(post.img, '2');
                     let results = parseLotteryResults(rawText);
 
-                    // Fallback to Engine 1 if less than 3 numbers found for a recognized country
+                    // If incomplete, try Engine 1 and MERGE
                     if (results.game && results.game !== 'junk' && results.numbers.length < 3) {
-                        console.log(`⚠️  Few results with Engine 2 (${results.numbers.length}). Trying Engine 1 fallback...`);
+                        console.log(`⚠️  Incomplete results with Engine 2 (${results.numbers.length}). Trying Engine 1 and MERGING...`);
                         const rawTextFallback = await performOCR(post.img, '1');
                         const resultsFallback = parseLotteryResults(rawTextFallback);
 
-                        if (resultsFallback.numbers.length > results.numbers.length) {
-                            console.log(`✅ Engine 1 found MORE results (${resultsFallback.numbers.length}). Using it.`);
-                            rawText = rawTextFallback;
-                            results = resultsFallback;
+                        // Merge logic: Combine unique numbers from both, respecting the order detected
+                        const combinedNumbers = [...new Set([...results.numbers, ...resultsFallback.numbers])];
+
+                        if (combinedNumbers.length > results.numbers.length) {
+                            console.log(`✅ Merged results! Engine 1 helped find ${combinedNumbers.length} total numbers.`);
+                            results.numbers = combinedNumbers;
+                            // Prepend OCR texts for transparency
+                            rawText = `--- ENGINE 2 ---\n${rawText}\n\n--- ENGINE 1 ---\n${rawTextFallback}`;
                         }
                     }
 
@@ -136,7 +140,6 @@ async function scrapeInstagram() {
             }
         } catch (error) {
             console.error(`❌ Error scraping ${url}:`, error.message);
-            await page.screenshot({ path: `error_${Date.now()}.png` });
         } finally {
             await page.close();
         }
