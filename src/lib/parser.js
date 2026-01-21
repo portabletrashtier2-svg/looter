@@ -81,49 +81,36 @@ function parseHondurasNumbers(text, lines) {
     let results = [];
     console.log(`[Parser] Specialized Honduras start. Total lines: ${lines.length}`);
 
-    // 1. DIARIA (1 number)
+    // Clean text for better extraction (remove common junk)
+    const cleanedLines = lines.map(line =>
+        line.replace(/\d{4}\s*[-\s]\s*\d{4}/g, ' ') // phone numbers
+            .replace(/\d{1,2}(?::\d{2})?\s*(?:AM|PM)/gi, ' ') // times
+            .replace(/\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/g, ' ') // dates
+    );
+
+    // 1. Find DIARIA keyword
     const diariaIdx = lines.findIndex(l => l.includes('DIARIA') || l.includes('DIAR') || l.includes('DIAR1A') || l.includes('D1AR'));
 
     if (diariaIdx !== -1) {
         console.log(`[Parser] DIARIA found at line ${diariaIdx}: "${lines[diariaIdx]}"`);
-        // Look in current or next 20 lines
-        for (let i = diariaIdx; i < diariaIdx + 20 && i < lines.length; i++) {
-            const line = lines[i];
 
-            // Skip dates/times/labels (Honduras specific filters)
-            if (line.includes('/') || line.includes(':') || line.includes('CON') || line.length > 15) continue;
+        // 2. Collect all valid 2-digit numbers after DIARIA
+        // Looking ahead up to 15 lines
+        for (let i = diariaIdx; i < diariaIdx + 15 && i < cleanedLines.length; i++) {
+            const line = cleanedLines[i];
 
-            const matches = line.match(/\d{2}/g) || [];
-            // We want the FIRST clear 2-digit number after DIARIA
-            const validMatches = matches.filter(m => !lines[diariaIdx].includes(m)); // avoid matching numbers in the keyword line itself
+            // Skip extremely long lines (ads/info) or lines with too many numbers
+            if (line.length > 30) continue;
 
-            if (validMatches.length > 0) {
-                results.push(validMatches[0]);
-                console.log(`[Parser]   DIARIA number found: ${validMatches[0]} at line ${i}`);
-                break;
-            }
-        }
-    }
-
-    // 2. PREMIADOS (2 numbers)
-    const premiadosIdx = lines.findIndex(l => l.includes('PREMIADOS') || l.includes('PREM') || l.includes('PREM1A'));
-
-    if (premiadosIdx !== -1) {
-        console.log(`[Parser] PREMIADOS found at line ${premiadosIdx}: "${lines[premiadosIdx]}"`);
-        let found = 0;
-        for (let i = premiadosIdx; i < premiadosIdx + 20 && i < lines.length; i++) {
-            const line = lines[i];
-            if (line.includes('/') || line.includes(':') || line.length > 15) continue;
-
-            const matches = line.match(/\d{2}/g) || [];
+            const matches = line.match(/\b\d{2}\b/g) || [];
             for (const m of matches) {
-                if (found < 2 && !results.includes(m)) {
+                // Heuristic: Avoid duplicates and known years
+                if (!results.includes(m) && m !== '20' && m !== '26' && m !== '25') {
                     results.push(m);
-                    found++;
-                    console.log(`[Parser]   PREMIADOS number ${found} found: ${m} at line ${i}`);
+                    console.log(`[Parser]   Found result candidate: ${m} at line ${i}`);
                 }
             }
-            if (found >= 2) break;
+            if (results.length >= 3) break;
         }
     }
 
@@ -209,22 +196,20 @@ function parseCostaRicaNumbers(text, lines) {
  * Uses traditional fallback logic: clean text and take last 3 numbers.
  */
 function parseGenericNumbers(text, lines) {
-    // 1. Clean the text to remove dates and phone numbers
+    // 1. Clean the text to remove dates, phone numbers, and potential hour/PM matches
     const cleanText = text
         .replace(/\d{1,2}\s*[-\/]\s*\d{1,2}\s*[-\/]\s*\d{2,4}/g, ' ') // dates
-        .replace(/\d{4}\s*[-\s]\s*\d{4}/g, ' ');                     // phones
+        .replace(/\d{4}\s*[-\s]\s*\d{4}/g, ' ')                     // phones
+        .replace(/\d{1,2}(?::\d{2})?\s*(?:AM|PM)/gi, ' ');           // times (12PM, etc)
 
-    // 2. Extract 2-digit numbers (more permissive without \b)
-    const allMatches = cleanText.match(/\d{2}/g) || [];
+    // 2. Extract exactly 2-digit numbers
+    const allMatches = cleanText.match(/\b\d{2}\b/g) || [];
 
-    // 3. Filter out common false positives (like 2026, 12:00, etc.)
+    // 3. Filter out common false positives (like 2026, etc.)
     const results = allMatches.filter(m => {
         const val = parseInt(m);
-        // Avoid parts of years (20, 26) or other common non-lottery numbers
-        if (val === 20 || val === 26 || val === 25) {
-            // Check if it was part of a date in the original text nearby
-            if (text.includes(`20${m}`) || text.includes(`${m}/`) || text.includes(`${m}-`)) return false;
-        }
+        // Avoid parts of years (20, 26, 25)
+        if (val === 20 || val === 26 || val === 25) return false;
         return true;
     });
 
