@@ -109,8 +109,7 @@ async function scrapeInstagram() {
                             numbers: isLottery ? results.numbers : []
                         },
                         external_id: postID,
-                        raw_ocr: rawText,
-                        scraped_at: new Date().toISOString()
+                        raw_ocr: rawText
                     };
 
                     let dbOp;
